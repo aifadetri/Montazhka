@@ -9,6 +9,7 @@ const AICore=(()=>{
  }
  function segments(data,offset,owned,duration){if(!Array.isArray(data.segments))throw Error('API не вернул речь с временными отметками.');return data.segments.filter(s=>Number.isFinite(s.start)&&Number.isFinite(s.end)&&s.end>s.start&&s.start>=0&&s.start<owned&&typeof s.text==='string'&&s.text.trim()&&Number(s.no_speech_prob??0)<.8).map(s=>({start:Math.min(duration,offset+s.start),end:Math.min(duration,offset+s.end),text:s.text.trim()}))}
  function chapters(result,items){if(!result||!Array.isArray(result.chapters))throw Error('ИИ вернул неверный формат меток.');const seen=new Set();return result.chapters.flatMap(c=>{if(!Number.isInteger(c.segment)||c.segment<0||c.segment>=items.length||typeof c.title!=='string')return [];const text=c.title.replace(/[\r\n]+/g,' ').trim().slice(0,180),seconds=Math.floor(items[c.segment].start);if(!text||seen.has(seconds))return [];seen.add(seconds);return [{seconds,text}]})}
- return {readWav,SilenceDetector,segments,chapters};
+ function limitChapters(items,limit){const seen=new Set();const unique=items.slice().sort((a,b)=>a.seconds-b.seconds).filter(item=>{const key=item.text.trim().toLocaleLowerCase('ru');if(seen.has(key))return false;seen.add(key);return true});if(unique.length<=limit)return unique;if(limit===1)return [unique[0]];return Array.from({length:limit},(_,i)=>unique[Math.round(i*(unique.length-1)/(limit-1))])}
+ return {readWav,SilenceDetector,segments,chapters,limitChapters};
 })();
 if(typeof module!=='undefined')module.exports=AICore;
