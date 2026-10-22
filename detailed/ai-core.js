@@ -1,0 +1,14 @@
+'use strict';
+const AICore=(()=>{
+ function readWav(bytes){const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);if(bytes.length<44||v.getUint32(0,false)!==0x52494646)throw Error('Не удалось прочитать аудио WAV.');let rate=16000,channels=1,bits=16,format=1;for(let i=12;i+8<=bytes.length;){const id=v.getUint32(i,false),size=v.getUint32(i+4,true),end=Math.min(i+8+size,bytes.length);if(id===0x666d7420){format=v.getUint16(i+8,true);channels=v.getUint16(i+10,true);rate=v.getUint32(i+12,true);bits=v.getUint16(i+22,true)}if(id===0x64617461){if(format!==1||bits!==16||channels!==1)throw Error('Ожидалось моно PCM 16 bit.');const data=new Float32Array(Math.floor((end-i-8)/2));for(let n=0;n<data.length;n++)data[n]=v.getInt16(i+8+n*2,true)/32768;return {samples:data,rate}}i=end+(size%2)}throw Error('В аудио нет данных.');}
+ class SilenceDetector{
+  constructor(db=-45,min=15){this.threshold=10**(db/20);this.min=min;this.start=null;this.end=0;this.intervals=[]}
+  feed(samples,rate,offset,limit=samples.length/rate){const count=Math.min(samples.length,Math.round(limit*rate)),hop=Math.round(rate*.02);for(let i=0;i<count;i+=hop){const end=Math.min(count,i+hop);let energy=0;for(let n=i;n<end;n++)energy+=samples[n]*samples[n];const quiet=Math.sqrt(energy/(end-i))<=this.threshold,t=offset+i/rate;this.end=offset+end/rate;if(quiet){if(this.start===null)this.start=t}else this.flush(t)}}
+  flush(end=this.end){if(this.start!==null&&end-this.start>=this.min-1e-6)this.intervals.push({start:this.start,end});this.start=null}
+  finish(){this.flush();return this.intervals}
+ }
+ function segments(data,offset,owned,duration){if(!Array.isArray(data.segments))throw Error('API не вернул речь с временными отметками.');return data.segments.filter(s=>Number.isFinite(s.start)&&Number.isFinite(s.end)&&s.end>s.start&&s.start>=0&&s.start<owned&&typeof s.text==='string'&&s.text.trim()&&Number(s.no_speech_prob??0)<.8).map(s=>({start:Math.min(duration,offset+s.start),end:Math.min(duration,offset+s.end),text:s.text.trim()}))}
+ function chapters(result,items){if(!result||!Array.isArray(result.chapters))throw Error('ИИ вернул неверный формат меток.');const seen=new Set();return result.chapters.flatMap(c=>{if(!Number.isInteger(c.segment)||c.segment<0||c.segment>=items.length||typeof c.title!=='string')return [];const text=c.title.replace(/[\r\n]+/g,' ').trim().slice(0,180),seconds=Math.floor(items[c.segment].start);if(!text||seen.has(seconds))return [];seen.add(seconds);return [{seconds,text}]})}
+ return {readWav,SilenceDetector,segments,chapters};
+})();
+if(typeof module!=='undefined')module.exports=AICore;
